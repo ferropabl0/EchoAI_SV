@@ -533,7 +533,7 @@ class EchoFocus:
         print(f'run model on {fold} set')
         y_true, y_pred, EIDs, loss = run_model_on_dataloader(model, dataloader, self.loss_fn)
         # convert model outputs back
-        y_true = np.array(y_true).squeeze()
+        y_true = np.atleast_2d(np.array(y_true))
         # y_true_test_norm = return_correct_output_np
         y_pred = np.array(y_pred)
         if self.task == 'measure':
@@ -573,7 +573,7 @@ class EchoFocus:
         best_model,_,_,_,input_norm_dict  = load_model_and_random_state(best_checkpoint_path, model)
         train_dl,val_dl,test_dl,input_norm_dict = self._setup_data(input_norm_dict)
 
-        for fold,dataloader in zip((train_dl,val_dl,test_dl),('train','val','test')):
+        for dataloader,fold in zip((train_dl,val_dl,test_dl),('train','val','test')):
             self._evaluate(model, dataloader, fold, input_norm_dict)
             print('eval time taken: ', time.time() - eval_start_time)
 

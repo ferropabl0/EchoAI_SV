@@ -214,3 +214,46 @@ _site/
 .jekyll-cache/
 vendor/
 .bundle/
+
+# ==========================================
+# EchoAI_SV project data and generated files
+# ==========================================
+
+# Clinical / patient data
+ventricle_project/metadata/
+ventricle_project/splits/
+
+# DICOM and processed imaging data
+ventricle_project/processed/
+test_real_echo/
+
+# Generated embeddings
+ventricle_project/embeddings/
+
+# Training outputs, predictions, logs and checkpoints
+ventricle_project/results/
+ventricle_project/logs/
+
+# Python cache
+ventricle_project/**/__pycache__/
+
+
+
+# Patient-linked/generated metadata
+ventricle_project/dicom_patient_metadata.csv
+ventricle_project/patient_folder_audit.csv
+ventricle_project/patient_id_audit.csv
+ventricle_project/patient_id_folder_num.csv
+ventricle_project/patient_order_reconstruction.csv
+
+# Accidental command-line files
+--dataset
+--model_name
+--task
+1
+config_backup.json
+
+# Editor / temporary backup files
+*.save
+*.save.*
+*_backup.py
