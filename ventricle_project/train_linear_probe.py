@@ -151,6 +151,29 @@ if "label_id" not in df.columns:
         "Expected 'label_id' column in the dataset."
     )
 
+#Validation of numerical IDs before converting to integers
+label_ids = pd.to_numeric(df["label_id"], errors="raise")
+
+if not label_ids.isin([0, 1]).all():
+    raise ValueError("label_id must contain only 0 or 1, without missing values.")
+
+#Check that the numerical IDs match clinical label names
+label_names = (
+    df["label"]
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
+
+expected_ids = label_names.map({"RV": 0, "LV": 1})
+
+if expected_ids.isna().any():
+    raise ValueError("Found missing or unexpected labels; epxected RV or LV.")
+
+if not label_ids.eq(expected_ids).all():
+    raise ValueError("Label mapping mismatch: expected RV=0 and LV=1.")
+
+
 df["target"] = df["label_id"].astype(int)
 
 # Verify that only RV/LV are present.
@@ -158,6 +181,7 @@ if not set(df["target"].unique()).issubset({0, 1}):
     raise ValueError(
         f"Unexpected label IDs: {df['target'].unique()}"
     )
+
 
 # ============================================================
 # CHECK SPLITS
@@ -437,6 +461,15 @@ else:
     print(FEATURE_FILE)
 
 
+if not torch.isfinite(y).all().item():
+    raise ValueError("Fearture targets contain non-finite values.")
+
+if not ((y == 0) | (y == 1)).all().item():
+    raise ValueError("Feature targets must contain only 0 or 1.")
+
+print("Feature target counts:", torch.unique(y, return_counts=True))
+
+
 print("\nFeature matrix:", X.shape)
 print("Labels:", y.shape)
 
@@ -629,6 +662,30 @@ def predict(X_data):
 
     return probabilities.cpu().numpy()
 
+#Added for evaluation and creating plots
+def evaluate_split(X_data, y_data):
+    "Evaluate one split using the current classifier."
+    classifier.eval()
+
+    with torch.no_grad():
+        logits = classifier(
+            X_data.to(DEVICE)
+        ).squeeze(1)
+
+        #BCEWithLogitsLoss before sigmoid below
+        loss = criterion(
+            logits,
+            y_data.to(DEVICE),
+        )
+
+        probabilities = torch.sigmoid(logits).cpu().numpy()
+
+    metrics = calculate_metrics(
+        y_data.cpu().numpy(),
+        probabilities,
+    )
+
+    return loss.item(), metrics
 
 # ============================================================
 # TRAIN
@@ -678,28 +735,20 @@ for epoch in range(1, EPOCHS + 1):
 
         n_samples += len(batch_y)
 
-    train_loss = (
-        running_loss / n_samples
-    )
+    #Average loss during parameters updating
+    optimization_loss = running_loss / n_samples
 
-    train_prob = predict(train_X)
-    val_prob = predict(val_X)
-
-    train_metrics = calculate_metrics(
-        train_y.numpy(),
-        train_prob,
-    )
-
-    val_metrics = calculate_metrics(
-        val_y.numpy(),
-        val_prob,
-    )
+    #Evaluation of both splots using completed epoch's classifier
+    train_loss, train_metrics = evaluate_split(train_X, train_y)
+    val_loss, val_metrics = evaluate_split(val_X, val_y)
 
     history.append({
         "epoch": epoch,
         "train_loss": train_loss,
         "train_accuracy": train_metrics["accuracy"],
         "train_auroc": train_metrics["auroc"],
+        "optimization_loss": optimization_loss,
+        "val_loss": val_loss,
         "val_accuracy": val_metrics["accuracy"],
         "val_balanced_accuracy": val_metrics["balanced_accuracy"],
         "val_auroc": val_metrics["auroc"],
@@ -707,9 +756,18 @@ for epoch in range(1, EPOCHS + 1):
         "val_specificity": val_metrics["specificity"],
     })
 
+    pd.DataFrame(history).to_csv(
+        RESULT_DIR / "training_history.csv",
+        index=False,
+    )
+
     print(
         f"Epoch {epoch:02d} | "
-        f"loss {train_loss:.4f} | "
+        f"train loss {train_loss:.4f} | "
+        f"val loss {val_loss:.4f} | "
+        f"train accuracy {train_metrics['accuracy']:.4f} | "
+        f"val accuracy {val_metrics['accuracy']:.4f} | "
+        #f"loss {train_loss:.4f} | " 
         f"train AUROC {train_metrics['auroc']:.4f} | "
         f"val AUROC {val_metrics['auroc']:.4f}"
     )

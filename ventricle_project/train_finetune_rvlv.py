@@ -148,6 +148,29 @@ df["series_name"] = (
     .astype(str)
 )
 
+#Validation of numerical IDs before converting to integers
+label_ids = pd.to_numeric(df["label_id"], errors="raise")
+
+if not label_ids.isin([0, 1]).all():
+    raise ValueError("label_id must contain only 0 or 1, without missing values.")
+
+#Check that the numerical IDs match clinical label names
+label_names = (
+    df["label"]
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
+
+expected_ids = label_names.map({"RV": 0, "LV": 1})
+
+if expected_ids.isna().any():
+    raise ValueError("Found missing or unexpected labels; epxected RV or LV.")
+
+if not label_ids.eq(expected_ids).all():
+    raise ValueError("Label mapping mismatch: expected RV=0 and LV=1.")
+
+
 # RV = 0
 # LV = 1
 df["target"] = (
@@ -164,7 +187,6 @@ if not set(
         f"Unexpected labels: "
         f"{df['target'].unique()}"
     )
-
 
 # ============================================================
 # CHECK PATIENT LEAKAGE
@@ -377,6 +399,13 @@ train_loader = DataLoader(
     batch_size=1,
     shuffle=True,
     num_workers=0
+)
+
+train_eval_loader = DataLoader(
+    train_dataset,
+    batch_size=1,
+    shuffle=False,
+    num_workers=0,
 )
 
 val_loader = DataLoader(
@@ -620,6 +649,7 @@ def evaluate(loader):
                 [x]
             ).reshape(-1)
 
+            #BCEWithLogitsLoss before sigmoid
             loss = criterion(
                 logits,
                 y.reshape(-1)
@@ -793,22 +823,20 @@ for epoch in range(
 
         n_samples += 1
 
-    train_loss = (
-        running_loss
-        / n_samples
-    )
+    optimization_loss = running_loss / n_samples
 
-
-    # Validation
-    val_loss, val_metrics, _ = (
-        evaluate(val_loader)
-    )
+    #Evaluation of both splits using epoch's model
+    train_loss, train_metrics, _ = evaluate(train_eval_loader)
+    val_loss, val_metrics, _ = evaluate(val_loader)
 
 
     print(
         f"Epoch {epoch:02d} | "
         f"train loss {train_loss:.4f} | "
         f"val loss {val_loss:.4f} | "
+        f"train accuracy {train_metrics['accuracy']:.4f} | "
+        f"val accuracy {val_metrics['accuracy']:.4f} | "
+        f"train AUROC {train_metrics['auroc']:.4f} | "
         f"val AUROC "
         f"{val_metrics['auroc']:.4f}"
     )
@@ -817,6 +845,9 @@ for epoch in range(
     history.append({
         "epoch": epoch,
         "train_loss": train_loss,
+        "optimization_loss": optimization_loss,
+        "train_accuracy": train_metrics["accuracy"],
+        "train_auroc": train_metrics["auroc"],
         "val_loss": val_loss,
         "val_accuracy": (
             val_metrics["accuracy"]
@@ -836,6 +867,11 @@ for epoch in range(
             val_metrics["specificity"]
         ),
     })
+
+    pd.DataFrame(history).to_csv(
+        HISTORY_FILE,
+        index=False,
+    )
 
 
     # --------------------------------------------------------
