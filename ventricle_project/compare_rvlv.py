@@ -16,7 +16,7 @@ def save_figure(fig, output_dir, name):
     try:
         for extension in ("png", "pdf"):
             path = output_dir / f"{name}.{extension}"
-            fig.savefig(path, dpi=200, bbox_incehs="tight")
+            fig.savefig(path, dpi=200, bbox_inches="tight")
             print(f"Saved: {path}")
     finally:
         plt.close(fig)
@@ -73,7 +73,7 @@ def load_linear_test_patients(result_dir):
         data.groupby("patient_id")
         .agg(
             label=("label", "first"),
-            probability_lv=("probablility_lv", "mean"),
+            probability_lv=("probability_lv", "mean"),
         )
         .sort_index()
     )
@@ -204,7 +204,7 @@ def plot_accuracy_comparison(linear_dir, finetune_dir, output_dir):
         ax.grid(alpha=0.3)
         ax.legend()
 
-    save_figure(fig, output_dir, "accurcay_comparison")
+    save_figure(fig, output_dir, "accuracy_comparison")
 
 
 
@@ -226,7 +226,7 @@ if __name__ == "__main__":
 
     #Uncomment to include confusion matrices in this file instead of using seperate file. 
     #plot_confusion_matrices(
-    #    args.linear_dir, args.finetune_dir, args.output_dir
+    #    args.linear_dir, args.finetune-dir, args.output_dir
     #)
 
     plot_accuracy_comparison(
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     )
 
 #Run it as:
-# python ventricle_project/compare_rvlv.py \
-#   --linear-dir ventricle_project/results/linear_probe_rvlv \
-#   --finetune_dir ventricle_project/results/finetune_rvlv \ 
+# python ventricle_project/compare_rvlv.py\
+#   --linear-dir ventricle_project/results/linear_probe_rvlv\
+#   --finetune-dir ventricle_project/results/finetune_rvlv\ 
 #   --output-dir ventricle_project/results/comparison

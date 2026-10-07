@@ -58,7 +58,7 @@ def load_test_patients(result_dir, method):
     probabilities = data["probability_lv"]
 
     if (
-        not np.isfininte(probabilities).all()
+        not np.isfinite(probabilities).all()
         or not probabilities.between(0, 1).all()
     ):
         raise ValueError("LV probabilities must be between 0 and 1.")
@@ -72,7 +72,7 @@ def load_test_patients(result_dir, method):
             data.groupby("patient_id")
             .agg(
                 label=("label", "first"),
-                probability_lv=("probablility_lv", "mean"),
+                probability_lv=("probability_lv", "mean"),
             )
             .reset_index()
         )
@@ -146,16 +146,16 @@ if __name__ == "__main__":
         required=True,
     )
 
-args = parser.parse_args()
-plot_confusion_matrix(args.result_dir, args.method)
+    args = parser.parse_args()
+    plot_confusion_matrix(args.result_dir, args.method)
 
 #Run seperately for each method
 #For linear probing:
-# python ventricle_project/plot_confusion_matrix.py \
-#   ventricle_project/results/linear_probe_rvlv \
+# python ventricle_project/plot_confusion_matrix.py\
+#   ventricle_project/results/linear_probe_rvlv\
 #   --method linear
 
 #For fine-tuning:
-# python ventricle_project/plot_confusion_matrix.py \
-#   ventricle_project/results/finetune_rvlv \
+# python ventricle_project/plot_confusion_matrix.py\
+#   ventricle_project/results/finetune_rvlv\
 #   --method finetune 
