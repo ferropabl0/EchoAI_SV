@@ -132,12 +132,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     plot_training_curves(args.history, args.title)
 
-#To run for Linear probing:
-# python ventricle_project/plot_training_curves.py \ 
-#   ventricle_project/results/linear_probe_rvlv/training_history.csv \ 
-#   --title "Linear probing"
+# Linear probing:
+# python ventricle_project/plot_training_curves.py ventricle_project/results/linear_probe_rvlv/training_history.csv --title "Linear probing"
 
-#To run for Fine-tuning:
-# python ventricle_project/plot_training_curves.py \ 
-#   ventricle_project/results/finetune_rvlv/training_history.csv \
-#   --title "Fine-tuning"
+# Fine-tuning:
+# python ventricle_project/plot_training_curves.py ventricle_project/results/finetune_rvlv/training_history.csv --title "Fine-tuning"
