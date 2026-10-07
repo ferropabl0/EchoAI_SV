@@ -233,8 +233,5 @@ if __name__ == "__main__":
         args.linear_dir, args.finetune_dir, args.output_dir
     )
 
-#Run it as:
-# python ventricle_project/compare_rvlv.py\
-#   --linear-dir ventricle_project/results/linear_probe_rvlv\
-#   --finetune-dir ventricle_project/results/finetune_rvlv\ 
-#   --output-dir ventricle_project/results/comparison
+# Run as:
+# python ventricle_project/compare_rvlv.py --linear-dir ventricle_project/results/linear_probe_rvlv --finetune-dir ventricle_project/results/finetune_rvlv --output-dir ventricle_project/results/comparison

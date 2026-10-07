@@ -149,13 +149,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     plot_confusion_matrix(args.result_dir, args.method)
 
-#Run seperately for each method
-#For linear probing:
-# python ventricle_project/plot_confusion_matrix.py\
-#   ventricle_project/results/linear_probe_rvlv\
-#   --method linear
+# Run separately for each method.
 
-#For fine-tuning:
-# python ventricle_project/plot_confusion_matrix.py\
-#   ventricle_project/results/finetune_rvlv\
-#   --method finetune 
+# Linear probing:
+# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/linear_probe_rvlv --method linear
+
+# Fine-tuning:
+# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/finetune_rvlv --method finetune
