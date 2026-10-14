@@ -226,7 +226,7 @@ if __name__ == "__main__":
 
     #Uncomment to include confusion matrices in this file instead of using seperate file. 
     #plot_confusion_matrices(
-    #    args.linear_dir, args.finetune-dir, args.output_dir
+    #    args.linear_dir, args.finetune_dir, args.output_dir
     #)
 
     plot_accuracy_comparison(

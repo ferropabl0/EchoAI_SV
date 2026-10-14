@@ -526,6 +526,24 @@ print(
     CLASSIFIER_LR
 )
 
+#Checking the parameters
+
+print("\nTrainable backbone parameters:",
+      sum(p.numel() for p in backbone_parameters if p.requires_grad),
+)
+
+print(
+    "Trainable classifier parameters:",
+    sum(p.numel() for p in classifier_parameters if p.requires_grad),
+)
+
+for i, group in enumerate(optimizer.param_groups):
+    print(
+        f"Optimizer group {i}:",
+        "parameters =", sum(p.numel() for p in group["params"]),
+        "learning rate =", group["lr"],
+    )
+
 
 # ============================================================
 # METRICS
@@ -758,6 +776,91 @@ def patient_level_metrics(
     )
 
 
+#Comparing parameters in each group
+
+def capture_data_diagnostics(parameter_groups):
+    "Capture gradients and weights immediately before optimizer step."
+
+    snapshots = {}
+    records = []
+
+    for name, parameters in parameter_groups.items():
+        snapshots[name] = [
+            p.detach().cpu().clone()
+            for p in parameters
+        ]
+
+        gradients = [
+            p.grad.detach()
+            for p in parameters
+            if p.grad is not None
+        ]
+
+        gradients_finite = all(
+            torch.isfinite(g).all().item()
+            for g in gradients
+        )
+
+        if not gradients_finite:
+            raise RuntimeError(
+                f"Non-finite gradients in {name}."
+            )
+
+        max_gradient = max(
+            (g.abs().max().item() for g in gradients),
+            default=0.0,
+        )
+
+        records.append({
+            "group": name,
+            "trainable_parameters": sum(
+                p.numel() for p in parameters
+                if p.requires_grad
+            ),
+            "tensors_with_gradients": len(gradients),
+            "max_absolute_gradient": max_gradient,
+            "gradient_finite": gradients_finite,
+        })
+
+    return snapshots, records
+
+
+def finish_update_diagnostics(
+        parameter_groups, snapshots, records, epoch
+):
+    "Compare weights immediately after the optimizer step."
+
+    for record in records:
+        name = record["group"]
+
+        max_change = max(
+            (
+                (p.detach().cpu() - old_value)
+                .abs()
+                .max()
+                .item()
+                for p, old_value in zip(
+                    parameter_groups[name],
+                    snapshots[name],
+                )
+            ),
+            default=0.0,
+        )
+
+        record["epoch"] = epoch
+        record["max_absolute_weight_change"] = max_change
+
+        print(
+            f"Update check - {name}: "
+            f"gradient max={record['max_absolute_gradient']:.3e}, "
+            f"weight change max={max_change:.3e}, "
+            f"tensors with gradients="
+            f"{record['tensors_with_gradients']}"
+        )
+
+    return records
+
+
 # ============================================================
 # TRAINING
 # ============================================================
@@ -772,6 +875,14 @@ best_state = None
 epochs_without_improvement = 0
 
 history = []
+
+
+diagnostic_groups = {
+    "backbone": backbone_parameters,
+    "classifier": classifier_parameters,
+}
+
+update_history = []
 
 
 for epoch in range(
@@ -815,7 +926,28 @@ for epoch in range(
             max_norm=1.0
         )
 
+       #n_samples is still zero on the first batch of the epoch
+        if n_samples == 0:
+            snapshots, update_records = capture_data_diagnostics(
+                diagnostic_groups
+            )
+
         optimizer.step()
+
+        if n_samples == 0:
+            update_history.extend(
+                finish_update_diagnostics(
+                    diagnostic_groups,
+                    snapshots,
+                    update_records,
+                    epoch,
+                )
+            )
+
+            pd.DataFrame(update_history).to_csv(
+                RESULT_DIR / "optimizer_diagnostics.csv",
+                index=False,
+            )
 
         running_loss += (
             loss.item()
