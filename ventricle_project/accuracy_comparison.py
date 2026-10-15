@@ -9,7 +9,11 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+TASK_CONFIGS = {
+    "rvlv": {"title": "RV/LV classification"},
+    "function": {"title": "Normal/impaired ventricular function"},
+}
 
 def save_figure(fig, output_dir, name):
     "Save both an image and a PDF."
@@ -94,63 +98,12 @@ def load_finetune_test_patients(result_dir):
 
     return data.set_index("patient_id").sort_index()
 
-#THE CONFUSION MATRICES
-def plot_confusion_matrices(linear_dir, finetune_dir, output_dir):
-    linear = load_linear_test_patients(linear_dir)
-    finetune = load_finetune_test_patients(finetune_dir)
-
-    #Ensure comparison of the same held-out patients.
-    if set(linear.index) != set(finetune.index):
-        raise ValueError(
-            "The methods have different test patient IDs. "
-            "Use matching test splits before comparing them. "
-        )
-
-    finetune = finetune.loc[linear.index]
-
-    if not np.array_equal(
-        linear["label"].to_numpy(),
-        finetune["label"].to_numpy(),
-    ):
-        raise ValueError("The methods have different labels for test patients.")
-
-    fig, axes = plt.subplots(
-        1, 2, figsize=(10, 4.5), constrained_layout=True
-    )
-
-    fig.suptitle(
-        "Patient-level test classification - LV threshold = 0.5"
-    )
-
-    for ax, name, data in [
-        (axes[0], "Linear probing", linear),
-        (axes[1], "Fine-tuning", finetune),
-    ]:
-        predicted = (data["probability_lv"] >= 0.5).astype(int)
-
-        matrix = confusion_matrix(
-            data["label"],
-            predicted,
-            labels=[0, 1],
-        )
-
-        ConfusionMatrixDisplay(
-            confusion_matrix=matrix,
-            display_labels=["RV", "LV"],
-        ).plot(
-            ax=ax,
-            cmap="Blues",
-            values_format="d",
-            colorbar=False,
-        )
-
-        accuracy = (predicted == data["label"]).mean()
-        ax.set_title(f"{name}\nTest accuracy: {accuracy:.1%}")
-
-    save_figure(fig, output_dir, "test_confusion_matrices")
-
-
-def plot_accuracy_comparison(linear_dir, finetune_dir, output_dir):
+def plot_accuracy_comparison(linear_dir, finetune_dir, output_dir, task):
+    task_config = TASK_CONFIGS[task]
+    linear_dir = Path(linear_dir)
+    finetune_dir = Path(finetune_dir)
+    output_dir = Path(output_dir)
+    
     histories = {
         "Linear probing": pd.read_csv(
             linear_dir / "training_history.csv"
@@ -168,53 +121,83 @@ def plot_accuracy_comparison(linear_dir, finetune_dir, output_dir):
         if missing or history.empty:
             raise ValueError(
                 f"{name}: missing columns {missing} or empty history. "
-                "Use the updated training scripts."
             )
 
-        for column in ("train_accuracy", "val_accuracy"):
-            if not history[column].between(0, 1).all():
-                raise ValueError(f"{name}: invalid values in {column}.")
+        for column in required:
+            history[column] = pd.to_numeric(
+                history[column], errors="raise"
+            )
+
+        if not np.isfinite(history[required].to_numpy()).all():
+                raise ValueError(f"{name}: history contains missing/non-finite values.")
+
+        if history["epoch"].duplicated().any():
+            raise ValueError(
+                f"{name}: invalid values in {column}."
+            )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     fig, axes = plt.subplots(
         1, 2, figsize=(11, 4.5), constrained_layout=True
     )
 
-    fig.suptitle("Method comparison - series-lebel accuracy")
+    fig.suptitle(
+        f"{task_config['title']}\n"
+        "Method comparison - series-level accuracy"
+    )
 
-    for ax, column, title in [
-        (axes[0], "train_accuracy", "Training"),
-        (axes[1], "val_accuracy", "Validation"),
-    ]:
-        for name, history in histories.items():
-            history = history.sort_values("epoch")
+    try:
+        for ax, column, title in [
+            (axes[0], "train_accuracy", "Training"),
+            (axes[1], "val_accuracy", "Validation"),
+        ]:
+            for name, history in histories.items():
+                history = history.sort_values("epoch")
 
-            ax.plot(
-                history["epoch"],
-                history[column],
-                label=name,
-                marker="o",
-                markersize=3,
+                ax.plot(
+                    history["epoch"],
+                    history[column],
+                    label=name,
+                    marker="o",
+                    markersize=3,
+                )
+
+            ax.set_title(title)
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Accuracy")
+            ax.set_ylim(0, 1)
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            ax.grid(alpha=0.3)
+            ax.legend()
+
+        for extension in ("png", "pdf"):
+            path = output_dir / (
+                f"accuracy_comparison_{task}.{extension}"
             )
 
-        ax.set_title(title)
-        ax.set_xlabel("Epoch")
-        ax.set_ylabel("Accuracy")
-        ax.set_ylim(0, 1)
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        ax.grid(alpha=0.3)
-        ax.legend()
+            fig.savefig(
+                path, dpi=200, bbox_inches="tight"
+            )
+            print(f"Saved: {path}")
 
-    save_figure(fig, output_dir, "accuracy_comparison")
+    finally:
+        plt.close(fig)
 
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Compare RV/LV linear probing and fine-tuning."
+        description="Compare training and validation accuracy between methods."
     )
 
     parser.add_argument("--linear-dir", type=Path, required=True)
     parser.add_argument("--finetune-dir", type=Path, required=True)
+    parser.add_argument(
+        "--task",
+        choices=list(TASK_CONFIGS),
+        required=True,
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -222,16 +205,12 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    #Uncomment to include confusion matrices in this file instead of using seperate file. 
-    #plot_confusion_matrices(
-    #    args.linear_dir, args.finetune_dir, args.output_dir
-    #)
 
     plot_accuracy_comparison(
-        args.linear_dir, args.finetune_dir, args.output_dir
+        args.linear_dir, args.finetune_dir, args.output_dir, args.task,
     )
 
 # Run as:
-# python ventricle_project/compare_rvlv.py --linear-dir ventricle_project/results/linear_probe_rvlv --finetune-dir ventricle_project/results/finetune_rvlv --output-dir ventricle_project/results/comparison
+#python ventricle_project/accuracy_comparison.py --linear-dir ventricle_project/results/function_linear_probe --finetune-dir ventricle_project/results/function_finetune --output-dir ventricle_project/results/function_comparison --task function
+
+#python ventricle_project/accuracy_comparison.py --linear-dir ventricle_project/results/linear_probe_rvlv --finetune-dir ventricle_project/results/finetune_rvlv --output-dir ventricle_project/results/comparison --task rvlv

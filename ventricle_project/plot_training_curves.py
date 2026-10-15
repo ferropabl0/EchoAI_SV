@@ -11,7 +11,24 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import pandas as pd
 
-def plot_training_curves(history_path, title):
+#Determening if it's used for RV/LV or NORMAL/IMPAIRED
+TASK_CONFIGS = {
+    "rvlv": {
+        "class_names": ["RV", "LV"],
+        "probability_column": "probability_lv",
+        "probability_label": "Predicted LV probability",
+        "title": "RV/LV classification",
+    },
+    "function": {
+        "class_names": ["Normal", "Impaired"],
+        "probability_column": "probability_impaired",
+        "probability_label": "Predicted impaired-function probability",
+        "title": "Ventricular function classification",
+    }
+}
+
+def plot_training_curves(history_path, task, title=None):
+    task_config = TASK_CONFIGS[task]
     history_path = Path(history_path)
     history = pd.read_csv(history_path)
 
@@ -55,11 +72,18 @@ def plot_training_curves(history_path, title):
         constrained_layout=True,
     )
 
-    fig.suptitle(f"{title} - series-level performance")
+    figure_title = task_config["title"]
+
+    if title:
+        figure_title += f" - {title}"
+
+    fig.suptitle(f"{figure_title}\nSeries-level performance")
+
+    positive_class = task_config["class_names"][1]
 
     panels = [
-        ("loss", "Binary cross-entropy loss"),
-        ("auroc", "AUROC"),
+        ("loss", "Binary cross_entropy loss"),
+        ("auroc", f"AUROC ({positive_class} = positive)"),
         ("accuracy", "Accuracy"),
     ]
 
@@ -104,7 +128,7 @@ def plot_training_curves(history_path, title):
     try: 
         for extension in ("png", "pdf"):
             output_path = history_path.parent / (
-                f"training_curves.{extension}"
+                f"training_curves_{task}.{extension}"
             )
 
             fig.savefig(output_path, dpi=200)
@@ -124,16 +148,31 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--task",
+        choices=["rvlv", "function"],
+        required=True,
+    )
+
+    parser.add_argument(
         "--title",
-        default="RV/LV classifier",
-        help="Title displayed above the pltos",
+        default=None,
+        help="Optional description, such as Linear probing",
     )
 
     args = parser.parse_args()
-    plot_training_curves(args.history, args.title)
 
-# Linear probing:
-# python ventricle_project/plot_training_curves.py ventricle_project/results/linear_probe_rvlv/training_history.csv --title "Linear probing"
+    plot_training_curves(args.history, args.task, args.title)
 
-# Fine-tuning:
-# python ventricle_project/plot_training_curves.py ventricle_project/results/finetune_rvlv/training_history.csv --title "Fine-tuning"
+#Running the different methods and tasks:
+
+# RV/LV linear probing:
+# python ventricle_project/plot_training_curves.py ventricle_project/results/linear_probe_rvlv/training_history.csv --task rvlv --title "Linear probing"
+
+# RV/LV fine-tuning:
+# python ventricle_project/plot_training_curves.py ventricle_project/results/finetune_rvlv/training_history.csv --task rvlv --title "Fine-tuning"
+
+# Function linear probing:
+# python ventricle_project/plot_training_curves.py ventricle_project/results/function_linear_probe/training_history.csv --task function --title "Linear probing"
+
+# Function fine-tuning:
+# python ventricle_project/plot_training_curves.py ventricle_project/results/function_finetune/training_history.csv --task function --title "Fine-tuning"

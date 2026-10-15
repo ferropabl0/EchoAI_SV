@@ -11,8 +11,27 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-def load_test_patients(result_dir, method):
-    "Load patient-lvl test predictions for selected method."
+#Determening if it's used for RV/LV or NORMAL/IMPAIRED
+TASK_CONFIGS = {
+    "rvlv": {
+        "class_names": ["RV", "LV"],
+        "probability_column": "probability_lv",
+        "probability_label": "Predicted LV probability",
+        "title": "RV/LV classification",
+    },
+    "function": {
+        "class_names": ["Normal", "Impaired"],
+        "probability_column": "probability_impaired",
+        "probability_label": "Predicted impaired-function probability",
+        "title": "Ventricular function classification",
+    }
+}
+
+def load_test_patients(result_dir, method, task_config):
+    "Load patient-level test predictions for selected method and task."
+
+    result_dir = Path(result_dir)
+    probability_column = task_config["probability_column"]
 
     if method == "linear":
         data = pd.read_csv(
@@ -32,7 +51,7 @@ def load_test_patients(result_dir, method):
         data = data.loc[test_mask].copy()
 
     else:
-        #Fine-tuning already saves patient-lvl test predictions. 
+        #Fine-tuning already saves patient-level test predictions. 
         data = pd.read_csv(
             result_dir / "patient_predictions.csv",
             dtype={"PatientID": str},
@@ -47,33 +66,35 @@ def load_test_patients(result_dir, method):
         raise ValueError("Missing patient IDs.")
 
     data["label"] = pd.to_numeric(data["label"], errors="raise")
-    data["probability_lv"] = pd.to_numeric(
-        data["probability_lv"],
-        errors="raise",
-    )
+
+    data[probability_column] = pd.to_numeric(data[probability_column], errors="raise")
 
     if not data["label"].isin([0, 1]).all():
-        raise ValueError("Labels must be RV=0 or LV=1.")
+        negative_class, positive_class = task_config["class_names"]
+        raise ValueError(
+            f"Labels must be {negative_class}=0 "
+            f"or {positive_class}=1."
+        )
 
-    probabilities = data["probability_lv"]
+    probabilities = data[probability_column]
 
     if (
         not np.isfinite(probabilities).all()
         or not probabilities.between(0, 1).all()
     ):
-        raise ValueError("LV probabilities must be between 0 and 1.")
+        raise ValueError("Probabilites must be finite and between 0 and 1.")
 
     if (data.groupby("patient_id")["label"].nunique() > 1).any():
         raise ValueError("A patient has conflicting labels.")
 
     if method == "linear":
-        #Match existing pipeline's patient-lvl aggregation
+        #Match existing pipeline's patient-level aggregation
         data = (
             data.groupby("patient_id")
-            .agg(
-                label=("label", "first"),
-                probability_lv=("probability_lv", "mean"),
-            )
+            .agg({
+                "label": "first",
+                probability_column: "mean",
+            })
             .reset_index()
         )
 
@@ -83,13 +104,16 @@ def load_test_patients(result_dir, method):
     return data
 
 
-def plot_confusion_matrix(result_dir, method):
-    "Save a patient-lvl test confusion matrix."
+def plot_confusion_matrix(result_dir, method, task_config):
+    "Save a patient-level test confusion matrix."
 
-    data = load_test_patients(result_dir, method)
+    result_dir = Path(result_dir)
+    probability_column = task_config["probability_column"]
 
-    #Probability refers to LV: RV=0, LV=1
-    predicted = (data["probability_lv"] >= 0.5).astype(int)
+    data = load_test_patients(result_dir, method, task_config)
+
+    #Probability refers to LV or IMPAIRED.
+    predicted = (data[probability_column] >= 0.5).astype(int)
 
     matrix = confusion_matrix(
         data["label"],
@@ -104,7 +128,7 @@ def plot_confusion_matrix(result_dir, method):
 
     ConfusionMatrixDisplay(
         confusion_matrix=matrix,
-        display_labels=["RV", "LV"],
+        display_labels=task_config["class_names"],
     ).plot(
         ax=ax,
         cmap="Blues",
@@ -113,6 +137,7 @@ def plot_confusion_matrix(result_dir, method):
     )
 
     ax.set_title(
+        f"{task_config['title']}\n"
         f"{name} - patient-level test results\n"
         f"Accuracy: {accuracy:.1%}; patients: {len(data)}"
     )
@@ -131,7 +156,7 @@ def plot_confusion_matrix(result_dir, method):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Save an RV/LV test confusion matrix."
+        description="Save a binary-classification test confusion matrix."
     )
 
     parser.add_argument(
@@ -146,13 +171,28 @@ if __name__ == "__main__":
         required=True,
     )
 
+    parser.add_argument(
+            "--task",
+            choices=["rvlv", "function"],
+            required=True,
+        )
+    
     args = parser.parse_args()
-    plot_confusion_matrix(args.result_dir, args.method)
+    
+    task_config = TASK_CONFIGS[args.task]
 
-# Run separately for each method.
+    plot_confusion_matrix(args.result_dir, args.method, task_config)
 
-# Linear probing:
-# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/linear_probe_rvlv --method linear
+#Running the different methods and configs:
 
-# Fine-tuning:
-# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/finetune_rvlv --method finetune
+# RV/LV linear probing:
+# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/linear_probe_rvlv --method linear --task rvlv
+
+# RV/LV fine-tuning:
+# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/finetune_rvlv --method finetune --task rvlv
+
+# Function linear probing:
+# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/function_linear_probe --method linear --task function
+
+# Function fine-tuning:
+# python ventricle_project/plot_confusion_matrix.py ventricle_project/results/function_finetune --method finetune --task function
